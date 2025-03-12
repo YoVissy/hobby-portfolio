@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+<head>
+    <title>Lämpötilan Seuranta</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>Lämpötila reaaliajassa</h1>
+
+<!-- Kytkin lämpötilagraafien näkymän valitsemiseksi -->
+<label for="toggle">Näytä erilliset graafit:</label>
+<input type="checkbox" id="toggle" name="toggle">
+
+<!-- Canvas elementit molemmille graafeille -->
+<canvas id="temperatureChart1"></canvas>
+<canvas id="temperatureChart2"></canvas>
+
+<script>
+    var ctx1 = document.getElementById('temperatureChart1').getContext('2d');
+    var ctx2 = document.getElementById('temperatureChart2').getContext('2d');
+
+    // Alustetaan molemmat graafit
+    var chart1 = new Chart(ctx1, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Lämpötila 1 (°C)',
+                data: [],
+                borderColor: 'red',
+                fill: false
+            }, {
+                label: 'Lämpötila 2 (°C)',
+                data: [],
+                borderColor: 'blue',
+                fill: false
+            }]
+        },
+        options: { scales: { x: { beginAtZero: true }, y: { min: -10, max: 35 } } }
+    });
+
+    var chart2 = new Chart(ctx2, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Lämpötila 2 (°C)',
+                data: [],
+                borderColor: 'blue',
+                fill: false
+            }]
+        },
+        options: { scales: { x: { beginAtZero: true }, y: { min: -10, max: 35 } } }
+    });
+
+    // Piilotetaan toinen graafi aluksi
+    document.getElementById('temperatureChart2').style.display = 'none';
+
+    // Alustetaan WebSocket yhteys
+    var ws = new WebSocket("ws://localhost:8080/ws");
+
+    // Kytkimen muutoksen käsittely
+    document.getElementById('toggle').addEventListener('change', function() {
+        if (this.checked) {
+            // Piirretään lämpötilat eri graafeihin
+            document.getElementById('temperatureChart2').style.display = 'block';  // Näytetään toinen graafi
+            chart1.data.labels = []; // Tyhjennetään chart1:n data
+            chart1.data.datasets[0].data = [];
+            chart1.data.datasets[1].data = [];
+            chart1.update();
+        } else {
+            // Piirretään molemmat lämpötilat samaan graafiin
+            document.getElementById('temperatureChart2').style.display = 'none';  // Piilotetaan toinen graafi
+        }
+    });
+
+    // WebSocketin viestien käsittely
+    ws.onmessage = function(event) {
+        var temps = event.data.split("|");
+        var temp1 = parseFloat(temps[0]);
+        var temp2 = parseFloat(temps[1]);
+
+        var currentTime = new Date().toLocaleTimeString();
+
+        if (document.getElementById('toggle').checked) {
+            // Piirretään molemmat lämpötilat eri graafeihin
+            chart1.data.labels.push(currentTime);
+            chart1.data.datasets[0].data.push(temp1);
+            chart1.data.datasets[1].data.push(temp2);
+
+            chart2.data.labels.push(currentTime);
+            chart2.data.datasets[0].data.push(temp2);
+
+            if (chart1.data.labels.length > 20) {
+                chart1.data.labels.shift();
+                chart1.data.datasets[0].data.shift();
+                chart1.data.datasets[1].data.shift();
+            }
+
+            if (chart2.data.labels.length > 20) {
+                chart2.data.labels.shift();
+                chart2.data.datasets[0].data.shift();
+            }
+
+            chart1.update();
+            chart2.update();
+        } else {
+            // Piirretään molemmat lämpötilat samaan graafiin
+            chart1.data.labels.push(currentTime);
+            chart1.data.datasets[0].data.push(temp1);
+            chart1.data.datasets[1].data.push(temp2);
+
+            if (chart1.data.labels.length > 20) {
+                chart1.data.labels.shift();
+                chart1.data.datasets[0].data.shift();
+                chart1.data.datasets[1].data.shift();
+            }
+
+            chart1.update();
+        }
+    };
+</script>
+</body>
+</html>
