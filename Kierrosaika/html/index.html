@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <title>Kierrosaikajärjestelmä Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        section { border: 1px solid #ccc; padding: 1em; margin-bottom: 1em; }
+        h2 { margin-top: 0; }
+        textarea { width: 100%; height: 150px; }
+        input, button { margin: 0.3em 0; }
+        .error-message { color: red; font-weight: bold; } /* Virheviestien tyylittely */
+    </style>
+</head>
+<body>
+<h1>Kierrosaikajärjestelmä Dashboard</h1>
+
+<section>
+    <h2>Kierrosaikojen tiedot (GET /api/lap_times)</h2>
+    <button id="refreshLapTimes">Päivitä kierrosaikat</button>
+    <pre id="lapTimesDisplay"></pre>
+    <pre id="lapTimesError" class="error-message"></pre>  </section>
+
+<section>
+    <h2>Lisää uusi kierrosaika (POST /api/add_lap)</h2>
+    <form id="addLapForm">
+        <label for="addLapId">ID</label> <input type="number" id="addLapId" name="id" required><br>
+        <label for="addLapHour">Tunti:</label> <input type="number" id="addLapHour" name="hour" min="0" max="23" required><br>
+        <label for="addLapMinute">Minuutti:</label> <input type="number" id="addLapMinute" name="minute" min="0" max="59" required><br>
+        <label for="addLapSecond">Sekunti:</label> <input type="number" id="addLapSecond" name="second" step="0.001" required><br>
+        <label for="addLapSector1">Sektori 1:</label> <input type="number" id="addLapSector1" name="sector1" step="0.01" required><br>
+        <label for="addLapSector2">Sektori 2:</label> <input type="number" id="addLapSector2" name="sector2" step="0.01" required><br>
+        <label for="addLapSector3">Sektori 3:</label> <input type="number" id="addLapSector3" name="sector3" step="0.01" required><br>
+        <label for="addLapLapCount">Kierrosnumero:</label> <input type="number" id="addLapLapCount" name="lap_count" min="1" required><br>
+        <label for="addLapDeviceType">Laite tyyppi:</label>
+        <select id="addLapDeviceType" name="device_type">
+            <option value="Anchor">Ankkuri</option>
+            <option value="Tag">Tagi</option>
+        </select><br>
+        <label for="addLapTotalTime">Kokonaisaika:</label> <input type="number" id="addLapTotalTime" name="total_time" step="0.01" required><br>
+        <button type="submit">Lähetä</button>
+    </form>
+    <pre id="addLapResponse"></pre>
+    <pre id="addLapError" class="error-message"></pre> </section>
+
+<section>
+    <h2>Päivitä kierrosaika (PUT /api/lap_times/{id})</h2>
+    <form id="updateLapForm">
+        <label for="updateLapId">Kierrosajan indeksi (id):</label> <input type="number" id="updateLapId" name="id" min="0" required><br>
+        <label for="updateLapTotalTime">Uusi Kokonaisaika:</label> <input type="number" id="updateLapTotalTime" name="total_time" step="0.01" required><br>
+        <button type="submit">Päivitä</button>
+    </form>
+    <pre id="updateLapResponse"></pre>
+    <pre id="updateLapError" class="error-message"></pre> </section>
+
+<section>
+    <h2>Poista kierrosaika (DELETE /api/lap_times/{id})</h2>
+    <form id="deleteLapForm">
+        <label for="deleteLapId">Kierrosajan indeksi (id):</label> <input type="number" id="deleteLapId" name="id" min="0" required><br>
+        <button type="submit">Poista</button>
+    </form>
+    <pre id="deleteLapResponse"></pre>
+    <pre id="deleteLapError" class="error-message"></pre> </section>
+
+<section>
+    <h2>UWB Mittaukset (GET /api/uwb)</h2>
+    <button id="refreshUWB">Hae mittaukset</button>
+    <pre id="uwbDisplay"></pre>
+    <pre id="uwbError" class="error-message"></pre> </section>
+
+<section>
+    <h2>Paikannus (GET /api/position)</h2>
+    <button id="getPosition">Hae sijainti</button>
+    <pre id="positionDisplay"></pre>
+    <pre id="positionError" class="error-message"></pre> </section>
+
+<script>
+    // Funktio API-pyyntöjen tekemiseen ja virheiden käsittelyyn
+    async function apiRequest(url, options = {}, errorElementId) {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const message = `HTTP virhe! status: ${response.status} - ${response.statusText}`;
+                throw new Error(message);
+            }
+            const data = await response.json();
+            document.getElementById(errorElementId).textContent = ""; // Tyhjennä mahdolliset aiemmat virheet
+            return data;
+        } catch (error) {
+            console.error("API-virhe:", error);
+            document.getElementById(errorElementId).textContent = "Virhe: " + error.message; // Näytä virhe käyttöliittymässä
+            return null; // Palauta null virhetilanteessa
+        }
+    }
+
+    // Päivitetään kierrosaikat
+    document.getElementById("refreshLapTimes").addEventListener("click", async () => {
+        const data = await apiRequest("http://127.0.0.1:8080/api/lap_times", {}, "lapTimesError");
+        if (data) { // Varmistetaan, että data on olemassa ennen näyttämistä
+            document.getElementById("lapTimesDisplay").textContent = JSON.stringify(data, null, 2);
+        } else {
+            document.getElementById("lapTimesDisplay").textContent = "Kierrosaikoja ei voitu ladata.";
+        }
+    });
+
+    // Uuden kierrosajan lisäys (POST)
+    document.getElementById("addLapForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+
+        // Asiakaspuolen validointi (esimerkki, laajenna tarvittaessa)
+        if (isNaN(formData.get("total_time"))) {
+            document.getElementById("addLapError").textContent = "Virhe: Kokonaisajan pitää olla numero.";
+            return; // Lopetetaan lähetys, jos validointi epäonnistuu
+        }
+        document.getElementById("addLapError").textContent = ""; // Tyhjennä validointivirheet
+
+        const lap = {
+            id: Number(formData.get("id")),
+            hour: Number(formData.get("hour")),
+            minute: Number(formData.get("minute")),
+            second: Number(formData.get("second")),
+            sector1: Number(formData.get("sector1")),
+            sector2: Number(formData.get("sector2")),
+            sector3: Number(formData.get("sector3")),
+            timestamp: new Date().toISOString(), // Aikaleimat asetetaan palvelimella, lähetetään tyhjänä
+            lap_count: Number(formData.get("lap_count")),
+            device_type: formData.get("device_type"),
+            rfid_read_time: new Date().toISOString(), // Aikaleimat asetetaan palvelimella, lähetetään tyhjänä
+            total_time: Number(formData.get("total_time"))
+        };
+        const response = await apiRequest("http://127.0.0.1:8080/api/add_lap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(lap)
+        }, "addLapError");
+        if (response) {
+            document.getElementById("addLapResponse").textContent = JSON.stringify(response, null, 2);
+            // Onnistuneen lisäyksen jälkeen päivitetään kierrosaikojen näyttö (valinnainen)
+            document.getElementById("refreshLapTimes").click();
+        }
+    });
+
+    // Päivitys (PUT)
+    document.getElementById("updateLapForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const id = formData.get("id");
+
+        // Asiakaspuolen validointi (esimerkki)
+        if (isNaN(formData.get("total_time"))) {
+            document.getElementById("updateLapError").textContent = "Virhe: Kokonaisajan pitää olla numero.";
+            return;
+        }
+        document.getElementById("updateLapError").textContent = "";
+
+        const updatedData = {
+            total_time: Number(formData.get("total_time"))
+        };
+        const response = await apiRequest(`http://127.0.0.1:8080/api/lap_times/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedData)
+        }, "updateLapError");
+        if (response) {
+            document.getElementById("updateLapResponse").textContent = JSON.stringify(response, null, 2);
+            // Onnistuneen päivityksen jälkeen päivitetään kierrosaikojen näyttö (valinnainen)
+            document.getElementById("refreshLapTimes").click();
+        }
+    });
+
+    // Poisto (DELETE)
+    document.getElementById("deleteLapForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const id = formData.get("id");
+        const response = await apiRequest(`http://127.0.0.1:8080/api/lap_times/${id}`, {
+            method: "DELETE"
+        }, "deleteLapError");
+        if (response) {
+            document.getElementById("deleteLapResponse").textContent = JSON.stringify(response, null, 2);
+            // Onnistuneen poiston jälkeen päivitetään kierrosaikojen näyttö (valinnainen)
+            document.getElementById("refreshLapTimes").click();
+        }
+    });
+
+    // UWB mittaukset
+    document.getElementById("refreshUWB").addEventListener("click", async () => {
+        const data = await apiRequest("http://127.0.0.1:8080/api/uwb", {}, "uwbError");
+        if (data) {
+            document.getElementById("uwbDisplay").textContent = JSON.stringify(data, null, 2);
+        } else {
+            document.getElementById("uwbDisplay").textContent = "UWB mittauksia ei voitu ladata.";
+        }
+    });
+
+    // Paikannus
+    document.getElementById("getPosition").addEventListener("click", async () => {
+        const data = await apiRequest("http://127.0.0.1:8080/api/position", {}, "positionError");
+        if (data) {
+            document.getElementById("positionDisplay").textContent = JSON.stringify(data, null, 2);
+        } else {
+            document.getElementById("positionDisplay").textContent = "Sijaintia ei voitu ladata.";
+        }
+    });
+</script>
+</body>
+</html>
